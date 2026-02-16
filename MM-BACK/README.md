@@ -82,6 +82,70 @@ graph TD;
 
 ## 3️⃣ Core Business Logic Breakdown
 
+### **⚡ Detailed Logic Workflows**
+
+#### **Workflow 1: Bot Monitor & Signal Decision (`server.js`)**
+
+This process runs every 60 seconds.
+
+```mermaid
+graph TD;
+    Start([Interval Trigger]) --> A[Fetch Active Bots from DB];
+    A --> B{Iterate Bot List};
+    B --> C[Fetch Current Price from API];
+    C --> D[Retrieve Previous Price from Memory];
+    D --> E{Calculate % Change};
+
+    E -->|Check Trade Mode| F{Trade Mode?};
+
+    %% INVERSE LOGIC
+    F -->|Inverse| G{Price Change > +Threshold?};
+    G -->|Yes| H[Action: SELL];
+    G -->|No| I{Price Change < -Threshold?};
+    I -->|Yes| J[Action: BUY];
+    I -->|No| K[Action: HOLD];
+
+    %% REVERSE LOGIC
+    F -->|Reverse| L{Price Change > +Threshold?};
+    L -->|Yes| M[Action: BUY];
+    L -->|No| N{Price Change < -Threshold?};
+    N -->|Yes| O[Action: SELL];
+    N -->|No| P[Action: HOLD];
+
+    H --> Q[Push to Swap Queue];
+    J --> Q;
+    M --> Q;
+    O --> Q;
+    K --> R[End Loop];
+    P --> R;
+```
+
+#### **Workflow 2: Swap Execution & Retry Logic (`BotController.js`)**
+
+This ensures robust execution even during RPC congestion.
+
+```mermaid
+graph TD;
+    Start([New Job in Queue]) --> A[Check Queue Status];
+    A -->|Busy?| B[Wait in Line];
+    A -->|Free?| C[Lock Bot ID];
+
+    C --> D[Fetch Encrypted Key from S3];
+    D --> E[Decrypt Key using AWS Secret];
+    E --> F[Build Transaction];
+    F --> G{Send via RPC};
+
+    G -->|Success| H[Log to MongoDB];
+    H --> I[Unlock Bot ID];
+    I --> J[Remove from Queue];
+
+    G -->|Fail| K{Retry Count < 3?};
+    K -->|Yes| L[Wait Backoff Time 2s/4s/8s];
+    L --> F;
+    K -->|No| M[Mark as FAILED PERMANENTLY];
+    M --> I;
+```
+
 ### **A. Bot Execution Cycle (The "Heartbeat")**
 
 The bot operates on a **polling interval** (default: 60s) to check market conditions and execute trades.
